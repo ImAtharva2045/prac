@@ -1,0 +1,1201 @@
+============================================================
+QUESTION
+============================================================
+
+Build a Student Performance Dashboard where teachers can add,
+edit and delete student records, and students can view their
+performance reports. Use React for frontend, Express for
+backend APIs and MongoDB for data storage.
+
+
+============================================================
+FOLDER STRUCTURE
+============================================================
+
+StudentDashboard
+├── backend
+│   ├── models
+│   │   └── Student.js
+│   ├── routes
+│   │   └── studentRoutes.js
+│   └── server.js
+└── frontend
+    ├── src
+    │   ├── App.jsx
+    │   ├── Teacher.jsx
+    │   ├── Student.jsx
+    │   ├── main.jsx
+    │   └── index.css
+    └── package.json
+
+
+============================================================
+BACKEND SETUP
+============================================================
+
+mkdir StudentDashboard
+cd StudentDashboard
+mkdir backend
+cd backend
+npm init -y
+npm install express mongoose cors
+mkdir models
+mkdir routes
+
+
+============================================================
+backend/models/Student.js
+============================================================
+
+const mongoose = require("mongoose");
+
+const studentSchema = new mongoose.Schema({
+    name: String,
+    rollNo: Number,
+    branch: String,
+    marks: Number,
+    attendance: Number
+});
+
+module.exports = mongoose.model("Student", studentSchema);
+
+
+============================================================
+backend/routes/studentRoutes.js
+============================================================
+
+const express = require("express");
+const Student = require("../models/Student");
+
+const router = express.Router();
+
+// GET ALL STUDENTS
+router.get("/", async (req, res) => {
+    try {
+        const students = await Student.find();
+        res.json(students);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error getting students"
+        });
+    }
+});
+
+// GET ONE STUDENT
+router.get("/:id", async (req, res) => {
+    try {
+        const student = await Student.findById(req.params.id);
+        res.json(student);
+    } catch (error) {
+        res.status(500).json({
+            message: "Student not found"
+        });
+    }
+});
+
+// ADD STUDENT
+router.post("/", async (req, res) => {
+    try {
+        const student = new Student({
+            name: req.body.name,
+            rollNo: req.body.rollNo,
+            branch: req.body.branch,
+            marks: req.body.marks,
+            attendance: req.body.attendance
+        });
+
+        const savedStudent = await student.save();
+
+        res.json(savedStudent);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error adding student"
+        });
+    }
+});
+
+// UPDATE STUDENT
+router.put("/:id", async (req, res) => {
+    try {
+        const student = await Student.findByIdAndUpdate(
+            req.params.id,
+            {
+                name: req.body.name,
+                rollNo: req.body.rollNo,
+                branch: req.body.branch,
+                marks: req.body.marks,
+                attendance: req.body.attendance
+            },
+            { new: true }
+        );
+
+        res.json(student);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error updating student"
+        });
+    }
+});
+
+// DELETE STUDENT
+router.delete("/:id", async (req, res) => {
+    try {
+        await Student.findByIdAndDelete(req.params.id);
+
+        res.json({
+            message: "Student deleted"
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error deleting student"
+        });
+    }
+});
+
+module.exports = router;
+
+
+============================================================
+backend/server.js
+============================================================
+
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+
+const studentRoutes = require("./routes/studentRoutes");
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// MongoDB connection
+mongoose.connect("mongodb://127.0.0.1:27017/studentdashboard")
+    .then(() => {
+        console.log("MongoDB connected");
+    })
+    .catch((error) => {
+        console.log(error);
+    });
+
+// Routes
+app.use("/api/students", studentRoutes);
+
+// Start server
+app.listen(5000, () => {
+    console.log("Server running on port 5000");
+});
+
+
+============================================================
+FRONTEND SETUP
+============================================================
+
+cd ..
+npm create vite@latest frontend
+cd frontend
+npm install
+npm install axios react-router-dom
+
+
+============================================================
+frontend/src/main.jsx
+============================================================
+
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+    <StrictMode>
+        <App />
+    </StrictMode>,
+)
+
+
+============================================================
+frontend/src/App.jsx
+============================================================
+
+import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import Teacher from "./Teacher";
+import Student from "./Student";
+
+function Home() {
+    return (
+        <div>
+            <h1>Student Performance Dashboard</h1>
+
+            <Link to="/teacher">
+                <button>Teacher Dashboard</button>
+            </Link>
+
+            <br />
+            <br />
+
+            <Link to="/student">
+                <button>Student Dashboard</button>
+            </Link>
+        </div>
+    );
+}
+
+function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/teacher" element={<Teacher />} />
+                <Route path="/student" element={<Student />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
+
+export default App;
+
+
+============================================================
+frontend/src/Teacher.jsx
+============================================================
+
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+function Teacher() {
+    const [students, setStudents] = useState([]);
+
+    // Form states
+    const [name, setName] = useState("");
+    const [rollNo, setRollNo] = useState("");
+    const [branch, setBranch] = useState("");
+    const [marks, setMarks] = useState("");
+    const [attendance, setAttendance] = useState("");
+
+    // null means Add mode, otherwise Edit mode
+    const [editId, setEditId] = useState(null);
+
+    // GET ALL STUDENTS
+    const getStudents = async () => {
+        const response = await axios.get(
+            "http://localhost:5000/api/students"
+        );
+
+        setStudents(response.data);
+    };
+
+    // Run when page opens
+    useEffect(() => {
+        getStudents();
+    }, []);
+
+    // ADD OR UPDATE STUDENT
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        // Basic validation
+        if (
+            name === "" ||
+            rollNo === "" ||
+            branch === "" ||
+            marks === "" ||
+            attendance === ""
+        ) {
+            alert("Please fill all fields");
+            return;
+        }
+
+        const student = {
+            name: name,
+            rollNo: Number(rollNo),
+            branch: branch,
+            marks: Number(marks),
+            attendance: Number(attendance)
+        };
+
+        // ADD STUDENT
+        if (editId === null) {
+            await axios.post(
+                "http://localhost:5000/api/students",
+                student
+            );
+
+            alert("Student added");
+        }
+
+        // UPDATE STUDENT
+        else {
+            await axios.put(
+                `http://localhost:5000/api/students/${editId}`,
+                student
+            );
+
+            alert("Student updated");
+            setEditId(null);
+        }
+
+        // Clear form
+        setName("");
+        setRollNo("");
+        setBranch("");
+        setMarks("");
+        setAttendance("");
+
+        // Refresh student list
+        getStudents();
+    };
+
+    // EDIT STUDENT
+    const editStudent = (student) => {
+        setEditId(student._id);
+        setName(student.name);
+        setRollNo(student.rollNo);
+        setBranch(student.branch);
+        setMarks(student.marks);
+        setAttendance(student.attendance);
+    };
+
+    // DELETE STUDENT
+    const deleteStudent = async (id) => {
+        await axios.delete(
+            `http://localhost:5000/api/students/${id}`
+        );
+
+        alert("Student deleted");
+
+        getStudents();
+    };
+
+    return (
+        <div>
+            <h1>Teacher Dashboard</h1>
+
+            <h2>
+                {editId === null ? "Add Student" : "Edit Student"}
+            </h2>
+
+            <form onSubmit={handleSubmit}>
+                <input
+                    type="text"
+                    placeholder="Name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="number"
+                    placeholder="Roll No"
+                    value={rollNo}
+                    onChange={(e) => setRollNo(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="text"
+                    placeholder="Branch"
+                    value={branch}
+                    onChange={(e) => setBranch(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="number"
+                    placeholder="Marks"
+                    value={marks}
+                    onChange={(e) => setMarks(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="number"
+                    placeholder="Attendance"
+                    value={attendance}
+                    onChange={(e) => setAttendance(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <button type="submit">
+                    {editId === null ? "Add Student" : "Update Student"}
+                </button>
+            </form>
+
+            <hr />
+
+            <h2>All Students</h2>
+
+            {students.map((student) => (
+                <div key={student._id}>
+                    <p>Name: {student.name}</p>
+                    <p>Roll No: {student.rollNo}</p>
+                    <p>Branch: {student.branch}</p>
+                    <p>Marks: {student.marks}</p>
+                    <p>Attendance: {student.attendance}%</p>
+
+                    <button
+                        onClick={() => editStudent(student)}
+                    >
+                        Edit
+                    </button>
+
+                    {" "}
+
+                    <button
+                        onClick={() => deleteStudent(student._id)}
+                    >
+                        Delete
+                    </button>
+
+                    <hr />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+export default Teacher;
+
+
+============================================================
+frontend/src/Student.jsx
+============================================================
+
+import { useState } from "react";
+import axios from "axios";
+
+function Student() {
+    const [id, setId] = useState("");
+    const [student, setStudent] = useState(null);
+
+    // GET ONE STUDENT
+    const getStudent = async () => {
+        if (id === "") {
+            alert("Enter student ID");
+            return;
+        }
+
+        try {
+            const response = await axios.get(
+                `http://localhost:5000/api/students/${id}`
+            );
+
+            setStudent(response.data);
+        } catch (error) {
+            alert("Student not found");
+        }
+    };
+
+    return (
+        <div>
+            <h1>Student Dashboard</h1>
+
+            <input
+                type="text"
+                placeholder="Enter Student ID"
+                value={id}
+                onChange={(e) => setId(e.target.value)}
+            />
+
+            <button onClick={getStudent}>
+                View Performance
+            </button>
+
+            {student && (
+                <div>
+                    <h2>Performance Report</h2>
+
+                    <p>Name: {student.name}</p>
+                    <p>Roll No: {student.rollNo}</p>
+                    <p>Branch: {student.branch}</p>
+                    <p>Marks: {student.marks}</p>
+                    <p>Attendance: {student.attendance}%</p>
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default Student;
+
+
+============================================================
+frontend/src/index.css
+============================================================
+
+body {
+    font-family: Arial;
+}
+
+
+============================================================
+RUN PROJECT
+============================================================
+
+TERMINAL 1:
+
+cd StudentDashboard/backend
+node server.js
+
+
+TERMINAL 2:
+
+cd StudentDashboard/frontend
+npm run dev
+
+
+============================================================
+STUDENT APIs
+============================================================
+
+GET     /api/students
+GET     /api/students/:id
+POST    /api/students
+PUT     /api/students/:id
+DELETE  /api/students/:id
+
+
+============================================================
+MASTER FLOW
+============================================================
+
+React
+↓
+React Router
+↓
+Teacher / Student
+↓
+useState / useEffect
+↓
+Axios
+↓
+Express
+↓
+Routes
+↓
+Mongoose
+↓
+MongoDB
+
+
+
+============================================================
+QUESTION
+============================================================
+
+Build an e-commerce app where users can browse, search,
+and purchase books. Admins should be able to add or remove
+books. Use React Router for navigation and MongoDB for
+storing products and orders.
+
+
+============================================================
+FOLDER STRUCTURE
+============================================================
+
+bookstore
+├── backend
+│   ├── models
+│   │   ├── Book.js
+│   │   └── Order.js
+│   ├── routes
+│   │   ├── bookRoutes.js
+│   │   └── orderRoutes.js
+│   └── server.js
+└── frontend
+    ├── src
+    │   ├── App.jsx
+    │   ├── User.jsx
+    │   ├── Admin.jsx
+    │   ├── main.jsx
+    │   └── index.css
+    └── package.json
+
+
+============================================================
+BACKEND SETUP
+============================================================
+
+mkdir bookstore
+cd bookstore
+mkdir backend
+cd backend
+npm init -y
+npm install express mongoose cors
+mkdir models
+mkdir routes
+
+
+============================================================
+backend/models/Book.js
+============================================================
+
+const mongoose = require("mongoose");
+
+const bookSchema = new mongoose.Schema({
+    title: String,
+    author: String,
+    price: Number
+});
+
+module.exports = mongoose.model("Book", bookSchema);
+
+
+============================================================
+backend/models/Order.js
+============================================================
+
+const mongoose = require("mongoose");
+
+const orderSchema = new mongoose.Schema({
+    bookId: String,
+    bookTitle: String,
+    quantity: Number
+});
+
+module.exports = mongoose.model("Order", orderSchema);
+
+
+============================================================
+backend/routes/bookRoutes.js
+============================================================
+
+const express = require("express");
+const Book = require("../models/Book");
+
+const router = express.Router();
+
+// GET ALL BOOKS
+router.get("/", async (req, res) => {
+    try {
+        const books = await Book.find();
+        res.json(books);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error getting books"
+        });
+    }
+});
+
+// ADD BOOK
+router.post("/", async (req, res) => {
+    try {
+        const book = new Book({
+            title: req.body.title,
+            author: req.body.author,
+            price: req.body.price
+        });
+
+        const savedBook = await book.save();
+
+        res.json(savedBook);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error adding book"
+        });
+    }
+});
+
+// DELETE BOOK
+router.delete("/:id", async (req, res) => {
+    try {
+        await Book.findByIdAndDelete(req.params.id);
+
+        res.json({
+            message: "Book deleted"
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: "Error deleting book"
+        });
+    }
+});
+
+module.exports = router;
+
+
+============================================================
+backend/routes/orderRoutes.js
+============================================================
+
+const express = require("express");
+const Order = require("../models/Order");
+
+const router = express.Router();
+
+// PURCHASE BOOK
+router.post("/", async (req, res) => {
+    try {
+        const order = new Order({
+            bookId: req.body.bookId,
+            bookTitle: req.body.bookTitle,
+            quantity: req.body.quantity
+        });
+
+        const savedOrder = await order.save();
+
+        res.json(savedOrder);
+    } catch (error) {
+        res.status(500).json({
+            message: "Error creating order"
+        });
+    }
+});
+
+module.exports = router;
+
+
+============================================================
+backend/server.js
+============================================================
+
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+
+const bookRoutes = require("./routes/bookRoutes");
+const orderRoutes = require("./routes/orderRoutes");
+
+const app = express();
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// MongoDB connection
+mongoose.connect("mongodb://127.0.0.1:27017/bookstore")
+    .then(() => {
+        console.log("MongoDB connected");
+    })
+    .catch((error) => {
+        console.log(error);
+    });
+
+// Book routes
+app.use("/api/books", bookRoutes);
+
+// Order routes
+app.use("/api/orders", orderRoutes);
+
+// Start server
+app.listen(5000, () => {
+    console.log("Server running on port 5000");
+});
+
+
+============================================================
+FRONTEND SETUP
+============================================================
+
+cd ..
+npm create vite@latest frontend
+cd frontend
+npm install
+npm install axios react-router-dom
+
+
+============================================================
+frontend/src/main.jsx
+============================================================
+
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.jsx'
+
+createRoot(document.getElementById('root')).render(
+    <StrictMode>
+        <App />
+    </StrictMode>,
+)
+
+
+============================================================
+frontend/src/App.jsx
+============================================================
+
+import {
+    BrowserRouter,
+    Routes,
+    Route,
+    Link
+} from "react-router-dom";
+
+import User from "./User";
+import Admin from "./Admin";
+
+function Home() {
+    return (
+        <div>
+            <h1>Book Store</h1>
+
+            <Link to="/user">
+                <button>User</button>
+            </Link>
+
+            <br />
+            <br />
+
+            <Link to="/admin">
+                <button>Admin</button>
+            </Link>
+        </div>
+    );
+}
+
+function App() {
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/user" element={<User />} />
+                <Route path="/admin" element={<Admin />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
+
+export default App;
+
+
+============================================================
+frontend/src/User.jsx
+============================================================
+
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+function User() {
+    const [books, setBooks] = useState([]);
+    const [search, setSearch] = useState("");
+
+    // GET ALL BOOKS
+    const getBooks = async () => {
+        try {
+            const response = await axios.get(
+                "http://localhost:5000/api/books"
+            );
+
+            setBooks(response.data);
+        } catch (error) {
+            console.log(error);
+        }
+    };
+
+    // RUN WHEN PAGE OPENS
+    useEffect(() => {
+        getBooks();
+    }, []);
+
+    // SEARCH BOOKS
+    const filteredBooks = books.filter((book) => {
+        return book.title
+            .toLowerCase()
+            .includes(search.toLowerCase());
+    });
+
+    // PURCHASE BOOK
+    const purchaseBook = async (book) => {
+        const order = {
+            bookId: book._id,
+            bookTitle: book.title,
+            quantity: 1
+        };
+
+        await axios.post(
+            "http://localhost:5000/api/orders",
+            order
+        );
+
+        alert("Book purchased");
+    };
+
+    return (
+        <div>
+            <h1>User Dashboard</h1>
+
+            <h2>Search Books</h2>
+
+            <input
+                type="text"
+                placeholder="Search book"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <br />
+            <br />
+
+            <h2>Available Books</h2>
+
+            {filteredBooks.map((book) => (
+                <div key={book._id}>
+                    <p>Title: {book.title}</p>
+                    <p>Author: {book.author}</p>
+                    <p>Price: {book.price}</p>
+
+                    <button
+                        onClick={() => purchaseBook(book)}
+                    >
+                        Purchase
+                    </button>
+
+                    <hr />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+export default User;
+
+
+============================================================
+frontend/src/Admin.jsx
+============================================================
+
+import { useEffect, useState } from "react";
+import axios from "axios";
+
+function Admin() {
+    const [books, setBooks] = useState([]);
+
+    // Form states
+    const [title, setTitle] = useState("");
+    const [author, setAuthor] = useState("");
+    const [price, setPrice] = useState("");
+
+    // GET ALL BOOKS
+    const getBooks = async () => {
+        const response = await axios.get(
+            "http://localhost:5000/api/books"
+        );
+
+        setBooks(response.data);
+    };
+
+    // RUN WHEN PAGE OPENS
+    useEffect(() => {
+        getBooks();
+    }, []);
+
+    // ADD BOOK
+    const addBook = async (e) => {
+        e.preventDefault();
+
+        // Basic validation
+        if (
+            title === "" ||
+            author === "" ||
+            price === ""
+        ) {
+            alert("Please fill all fields");
+            return;
+        }
+
+        const book = {
+            title: title,
+            author: author,
+            price: Number(price)
+        };
+
+        // Send book to backend
+        await axios.post(
+            "http://localhost:5000/api/books",
+            book
+        );
+
+        alert("Book added");
+
+        // Clear form
+        setTitle("");
+        setAuthor("");
+        setPrice("");
+
+        // Refresh book list
+        getBooks();
+    };
+
+    // DELETE BOOK
+    const deleteBook = async (id) => {
+        await axios.delete(
+            `http://localhost:5000/api/books/${id}`
+        );
+
+        alert("Book deleted");
+
+        // Refresh book list
+        getBooks();
+    };
+
+    return (
+        <div>
+            <h1>Admin Dashboard</h1>
+
+            <h2>Add Book</h2>
+
+            <form onSubmit={addBook}>
+                <input
+                    type="text"
+                    placeholder="Book title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="text"
+                    placeholder="Author"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <input
+                    type="number"
+                    placeholder="Price"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                />
+
+                <br />
+                <br />
+
+                <button type="submit">
+                    Add Book
+                </button>
+            </form>
+
+            <hr />
+
+            <h2>All Books</h2>
+
+            {books.map((book) => (
+                <div key={book._id}>
+                    <p>Title: {book.title}</p>
+                    <p>Author: {book.author}</p>
+                    <p>Price: {book.price}</p>
+
+                    <button
+                        onClick={() => deleteBook(book._id)}
+                    >
+                        Remove Book
+                    </button>
+
+                    <hr />
+                </div>
+            ))}
+        </div>
+    );
+}
+
+export default Admin;
+
+
+============================================================
+frontend/src/index.css
+============================================================
+
+body {
+    font-family: Arial;
+}
+
+
+============================================================
+RUN PROJECT
+============================================================
+
+TERMINAL 1:
+
+cd bookstore/backend
+node server.js
+
+
+TERMINAL 2:
+
+cd bookstore/frontend
+npm run dev
+
+
+============================================================
+BOOK APIs
+============================================================
+
+GET     /api/books
+POST    /api/books
+DELETE  /api/books/:id
+POST    /api/orders
+
+
+============================================================
+MASTER FLOW
+============================================================
+
+React
+↓
+React Router
+↓
+User / Admin
+↓
+useState / useEffect
+↓
+Axios
+↓
+Express
+↓
+Routes
+↓
+Mongoose
+↓
+MongoDB
+
+
+============================================================
+IMPORTANT PATTERNS
+============================================================
+
+map()
+→ Display multiple items
+
+filter()
+→ Search / select matching items
+
+useState()
+→ Store changing data
+
+useEffect(..., [])
+→ Run when page opens
+
+axios.get()
+→ GET data
+
+axios.post()
+→ Create data
+
+axios.put()
+→ Update data
+
+axios.delete()
+→ Delete data
+
+React Router
+→ Navigation
+
+Order model
+→ Store purchases
