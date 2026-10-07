@@ -1,0 +1,925 @@
+
+Server.js
+const express = require("express");
+const { MongoClient, ObjectId } = require("mongodb");
+const cors = require("cors");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+const client = new MongoClient("mongodb://localhost:27017");
+
+let appointments;
+let users;
+
+async function startServer() {
+
+    try {
+
+        await client.connect();
+
+        console.log("MongoDB Connected");
+
+        const db = client.db("appointmentDB");
+
+        appointments = db.collection("appointments");
+        users = db.collection("users");
+
+        app.listen(5000, () => {
+            console.log("Server running on port 5000");
+        });
+
+    } catch (error) {
+        console.log(error);
+    }
+}
+
+
+// GET appointments
+app.get("/appointments", async (req, res) => {
+
+    const result = await appointments.find().toArray();
+
+    res.json(result);
+});
+
+
+// BOOK appointment
+app.post("/appointments", async (req, res) => {
+
+    const result = await appointments.insertOne(req.body);
+
+    res.json({
+        message: "Appointment booked successfully",
+        id: result.insertedId
+    });
+});
+
+
+// RESCHEDULE appointment
+app.put("/appointments/:id", async (req, res) => {
+
+    const id = new ObjectId(req.params.id);
+
+    await appointments.updateOne(
+        { _id: id },
+        { $set: req.body }
+    );
+
+    res.json({
+        message: "Appointment updated successfully"
+    });
+});
+
+
+// CANCEL appointment
+app.delete("/appointments/:id", async (req, res) => {
+
+    const id = new ObjectId(req.params.id);
+
+    await appointments.deleteOne({
+        _id: id
+    });
+
+    res.json({
+        message: "Appointment cancelled successfully"
+    });
+});
+
+
+// Add user
+app.post("/users", async (req, res) => {
+
+    const result = await users.insertOne(req.body);
+
+    res.json({
+        message: "User added successfully",
+        id: result.insertedId
+    });
+});
+
+
+// Get users
+app.get("/users", async (req, res) => {
+
+    const result = await users.find().toArray();
+
+    res.json(result);
+});
+
+
+startServer();
+
+App.jsx
+import { useEffect, useState } from "react";
+import "./App.css";
+
+function App() {
+
+    const [appointments, setAppointments] = useState([]);
+
+    const [patient, setPatient] = useState("");
+    const [doctor, setDoctor] = useState("");
+    const [date, setDate] = useState("");
+    const [time, setTime] = useState("");
+
+    const [editId, setEditId] = useState(null);
+
+
+    // GET appointments
+    const getAppointments = async () => {
+
+        const response = await fetch(
+            "http://localhost:5000/appointments"
+        );
+
+        const data = await response.json();
+
+        setAppointments(data);
+    };
+
+
+    useEffect(() => {
+        getAppointments();
+    }, []);
+
+
+    // BOOK / RESCHEDULE
+    const handleSubmit = async (e) => {
+
+        e.preventDefault();
+
+        const appointmentData = {
+            patient,
+            doctor,
+            date,
+            time
+        };
+
+
+        if (editId) {
+
+            await fetch(
+                `http://localhost:5000/appointments/${editId}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(appointmentData)
+                }
+            );
+
+            setEditId(null);
+
+        } else {
+
+            await fetch(
+                "http://localhost:5000/appointments",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(appointmentData)
+                }
+            );
+        }
+
+
+        setPatient("");
+        setDoctor("");
+        setDate("");
+        setTime("");
+
+        getAppointments();
+    };
+
+
+    // RESCHEDULE
+    const editAppointment = (appointment) => {
+
+        setEditId(appointment._id);
+
+        setPatient(appointment.patient);
+        setDoctor(appointment.doctor);
+        setDate(appointment.date);
+        setTime(appointment.time);
+    };
+
+
+    // CANCEL
+    const cancelAppointment = async (id) => {
+
+        await fetch(
+            `http://localhost:5000/appointments/${id}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        getAppointments();
+    };
+
+
+    return (
+
+        <div className="container">
+
+            <h1>Doctor Appointment System</h1>
+
+
+            <section className="section">
+
+                <h2>
+                    {editId
+                        ? "Reschedule Appointment"
+                        : "Book Appointment"}
+                </h2>
+
+                <form onSubmit={handleSubmit}>
+
+                    <input
+                        type="text"
+                        placeholder="Patient Name"
+                        value={patient}
+                        onChange={(e) =>
+                            setPatient(e.target.value)
+                        }
+                    />
+
+                    <input
+                        type="text"
+                        placeholder="Doctor Name"
+                        value={doctor}
+                        onChange={(e) =>
+                            setDoctor(e.target.value)
+                        }
+                    />
+
+                    <input
+                        type="date"
+                        value={date}
+                        onChange={(e) =>
+                            setDate(e.target.value)
+                        }
+                    />
+
+                    <input
+                        type="time"
+                        value={time}
+                        onChange={(e) =>
+                            setTime(e.target.value)
+                        }
+                    />
+
+                    <button type="submit">
+
+                        {editId
+                            ? "Reschedule"
+                            : "Book Appointment"}
+
+                    </button>
+
+                </form>
+
+            </section>
+
+
+            <section className="section">
+
+                <h2>Appointments</h2>
+
+                <div className="book-list">
+
+                    {appointments.map((appointment) => (
+
+                        <div
+                            className="book-card"
+                            key={appointment._id}
+                        >
+
+                            <h3>
+                                {appointment.patient}
+                            </h3>
+
+                            <p>
+                                Doctor: {appointment.doctor}
+                            </p>
+
+                            <p>
+                                Date: {appointment.date}
+                            </p>
+
+                            <p>
+                                Time: {appointment.time}
+                            </p>
+
+                            <button
+                                onClick={() =>
+                                    editAppointment(appointment)
+                                }
+                            >
+                                Reschedule
+                            </button>
+
+                            <button
+                                onClick={() =>
+                                    cancelAppointment(
+                                        appointment._id
+                                    )
+                                }
+                            >
+                                Cancel
+                            </button>
+
+                        </div>
+
+                    ))}
+
+                </div>
+
+            </section>
+
+        </div>
+    );
+}
+
+export default App;
+
+
+App.css--
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f2f2f2;
+}
+
+.container {
+    width: 90%;
+    max-width: 1000px;
+    margin: auto;
+    padding: 30px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.section {
+    background-color: white;
+    padding: 25px;
+    margin-bottom: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px #ccc;
+}
+
+input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+button {
+    padding: 10px 15px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #333;
+    color: white;
+}
+
+button:hover {
+    opacity: 0.8;
+}
+
+.book-list {
+    display: grid;
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(250px, 1fr)
+    );
+    gap: 20px;
+}
+
+.book-card {
+    background-color: #f9f9f9;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.book-card h3 {
+    margin-top: 0;
+}
+
+.book-card p {
+    margin: 8px 0;
+}
+
+
+Mongodb
+appointmentDB
+├── appointments
+└── users
+
+{
+    "patient": "Atharva",
+    "doctor": "Dr. Sharma",
+    "date": "2026-10-10",
+    "time": "10:30",
+    "status": "Booked"
+}
+
+////////
+
+npm install react-router-dom
+Server.js
+const express = require("express");
+const { MongoClient, ObjectId } = require("mongodb");
+const cors = require("cors");
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+const client = new MongoClient("mongodb://localhost:27017");
+
+let products;
+let orders;
+
+async function startServer() {
+
+    try {
+
+        await client.connect();
+
+        console.log("MongoDB Connected");
+
+        const db = client.db("ecommerceDB");
+
+        products = db.collection("products");
+        orders = db.collection("orders");
+
+        app.listen(5000, () => {
+            console.log("Server running on port 5000");
+        });
+
+    } catch (error) {
+        console.log(error);
+    }
+}
+
+
+// Get all products
+app.get("/products", async (req, res) => {
+
+    const result = await products.find().toArray();
+
+    res.json(result);
+});
+
+
+// Search products
+app.get("/products/search/:name", async (req, res) => {
+
+    const result = await products.find({
+        name: {
+            $regex: req.params.name,
+            $options: "i"
+        }
+    }).toArray();
+
+    res.json(result);
+});
+
+
+// Admin add product
+app.post("/products", async (req, res) => {
+
+    const result = await products.insertOne(req.body);
+
+    res.json({
+        message: "Product added successfully",
+        id: result.insertedId
+    });
+});
+
+
+// Admin delete product
+app.delete("/products/:id", async (req, res) => {
+
+    const id = new ObjectId(req.params.id);
+
+    await products.deleteOne({
+        _id: id
+    });
+
+    res.json({
+        message: "Product deleted successfully"
+    });
+});
+
+
+// Purchase book
+app.post("/orders", async (req, res) => {
+
+    const result = await orders.insertOne(req.body);
+
+    res.json({
+        message: "Order placed successfully",
+        id: result.insertedId
+    });
+});
+
+
+// View orders
+app.get("/orders", async (req, res) => {
+
+    const result = await orders.find().toArray();
+
+    res.json(result);
+});
+
+
+startServer();
+
+App.jsx
+import { useEffect, useState } from "react";
+import {
+    BrowserRouter,
+    Routes,
+    Route,
+    Link
+} from "react-router-dom";
+
+import "./App.css";
+
+
+function Home() {
+
+    return (
+        <div className="section">
+
+            <h2>Book Store</h2>
+
+            <p>Browse and purchase books.</p>
+
+            <Link to="/books">
+                <button>View Books</button>
+            </Link>
+
+        </div>
+    );
+}
+
+
+function Books() {
+
+    const [books, setBooks] = useState([]);
+    const [search, setSearch] = useState("");
+
+    const getBooks = async () => {
+
+        const response = await fetch(
+            "http://localhost:5000/products"
+        );
+
+        const data = await response.json();
+
+        setBooks(data);
+    };
+
+
+    useEffect(() => {
+        getBooks();
+    }, []);
+
+
+    const searchBooks = async () => {
+
+        if (search === "") {
+            getBooks();
+            return;
+        }
+
+        const response = await fetch(
+            `http://localhost:5000/products/search/${search}`
+        );
+
+        const data = await response.json();
+
+        setBooks(data);
+    };
+
+
+    const buyBook = async (book) => {
+
+        await fetch(
+            "http://localhost:5000/orders",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    productId: book._id,
+                    bookName: book.name,
+                    price: book.price
+                })
+            }
+        );
+
+        alert("Book purchased successfully");
+    };
+
+
+    return (
+        <div className="section">
+
+            <h2>Books</h2>
+
+            <input
+                type="text"
+                placeholder="Search book"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+            />
+
+            <button onClick={searchBooks}>
+                Search
+            </button>
+
+
+            <div className="book-list">
+
+                {books.map((book) => (
+
+                    <div
+                        className="book-card"
+                        key={book._id}
+                    >
+
+                        <h3>{book.name}</h3>
+
+                        <p>Author: {book.author}</p>
+
+                        <p>Category: {book.category}</p>
+
+                        <p>Price: ₹{book.price}</p>
+
+                        <button
+                            onClick={() => buyBook(book)}
+                        >
+                            Purchase
+                        </button>
+
+                    </div>
+
+                ))}
+
+            </div>
+
+        </div>
+    );
+}
+
+
+function Admin() {
+
+    const [name, setName] = useState("");
+    const [author, setAuthor] = useState("");
+    const [category, setCategory] = useState("");
+    const [price, setPrice] = useState("");
+
+
+    const addBook = async (e) => {
+
+        e.preventDefault();
+
+        await fetch(
+            "http://localhost:5000/products",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    name,
+                    author,
+                    category,
+                    price: Number(price)
+                })
+            }
+        );
+
+        setName("");
+        setAuthor("");
+        setCategory("");
+        setPrice("");
+
+        alert("Book added");
+    };
+
+
+    return (
+        <div className="section">
+
+            <h2>Admin - Add Book</h2>
+
+            <form onSubmit={addBook}>
+
+                <input
+                    type="text"
+                    placeholder="Book Name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                />
+
+                <input
+                    type="text"
+                    placeholder="Author"
+                    value={author}
+                    onChange={(e) => setAuthor(e.target.value)}
+                />
+
+                <input
+                    type="text"
+                    placeholder="Category"
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                />
+
+                <input
+                    type="number"
+                    placeholder="Price"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                />
+
+                <button type="submit">
+                    Add Book
+                </button>
+
+            </form>
+
+        </div>
+    );
+}
+
+
+function App() {
+
+    return (
+        <BrowserRouter>
+
+            <div className="container">
+
+                <h1>E-Commerce Book Store</h1>
+
+                <nav>
+
+                    <Link to="/">
+                        <button>Home</button>
+                    </Link>
+
+                    <Link to="/books">
+                        <button>Books</button>
+                    </Link>
+
+                    <Link to="/admin">
+                        <button>Admin</button>
+                    </Link>
+
+                </nav>
+
+
+                <Routes>
+
+                    <Route
+                        path="/"
+                        element={<Home />}
+                    />
+
+                    <Route
+                        path="/books"
+                        element={<Books />}
+                    />
+
+                    <Route
+                        path="/admin"
+                        element={<Admin />}
+                    />
+
+                </Routes>
+
+            </div>
+
+        </BrowserRouter>
+    );
+}
+
+export default App;
+
+App.css
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background-color: #f2f2f2;
+}
+
+.container {
+    width: 90%;
+    max-width: 1000px;
+    margin: auto;
+    padding: 30px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+h2 {
+    margin-top: 0;
+}
+
+.section {
+    background-color: white;
+    padding: 25px;
+    margin-bottom: 30px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px #ccc;
+}
+
+input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+button {
+    padding: 10px 15px;
+    margin: 5px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    background-color: #333;
+    color: white;
+}
+
+button:hover {
+    opacity: 0.8;
+}
+
+.book-list {
+    display: grid;
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(250px, 1fr)
+    );
+    gap: 20px;
+}
+
+.book-card {
+    background-color: #f9f9f9;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+}
+
+.book-card h3 {
+    margin-top: 0;
+}
+
+.book-card p {
+    margin: 8px 0;
+}
+
+
+
+Mongo
+ecommerceDB
+├── products
+└── orders
+{
+    "name": "The Alchemist",
+    "author": "Paulo Coelho",
+    "category": "Fiction",
+    "price": 399
+}
